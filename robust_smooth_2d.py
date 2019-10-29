@@ -1,14 +1,17 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import ndimage
+from scipy.fftpack import dct, idct
 
 
-def smoothn(y):
+def robust_smooth_2d(y):
     size_y = np.asarray(y.shape)
+    num_elements = np.prod(size_y)
+    not_finite = np.isnan(y)
 
-    # Create weight matrix with zeros at missing value locations
+    # Create weight matrix with zeros at missing (NaN) value locations
     weights = np.ones(size_y)
-    weights[np.isnan(y)] = 0
+    weights[not_finite] = 0
 
     # Create the Lambda tensor, which contains the eingenvalues of the 
     # difference matrix used in the penalized least squares process. We assume 
@@ -33,45 +36,47 @@ def smoothn(y):
 
     # initialize stuff before iterating
     weights_total = weights
-    z = initial_guess(y)
+    z = initial_guess(y, not_finite)
+    y[not_finite] = 0
+    tolerance = 1
+    robust_step = 1
+    num_iterations = 0
+    relaxation_factor = 1.75
+    iterate = True
+
+    # iterative process
+    while iterate:
+        amount_of_weights = np.sum(weights_total) / num_elements
+        while tolerance > 1e-3 and num_iterations < 100:
+            num_iterations += 1
+            dct_y = dct(weights_total*(y - z) + z)
+            if 
 
 
 
     return 0
 
 
-def initial_guess(y):
+def initial_guess(y, not_finite):
     # nearest neighbor interpolation of missing values
-    nan_map = np.isnan(y)
     if nan_map.any():
-        indices = ndimage.distance_transform_edt(nan_map, return_indices=True)[1]
+        indices = ndimage.distance_transform_edt(not_finite, return_indices=True)[1]
         z = y[indices[0], indices[1]]
     else:
-        z = y
-    
-
-
+        z = y    
+    # coarse smoothing using one-tenth (?) of DCT coefficients
+    z = dct(dct(z, norm='ortho', type=2, axis=0), norm='ortho', type=2, axis=1)
+    zero_start = np.ceil(np.array(z.shape)/3).astype(int)
+    z[zero_start[0]:,:] = 0
+    z[:,zero_start[1]:] = 0
+    z = idct(idct(z, norm='ortho', type=2, axis=1), norm='ortho', type=2, axis=0)
     return z
-    
-    #     ny = numel(y);    
-    #     %-- coarse fast smoothing using one-tenth of the DCT coefficients
-    #     siz = size(z{1});
-    #     z = cellfun(@(x) dctn(x),z,'UniformOutput',0);
-    #     for k = 1:ndims(z{1})
-    #         for i = 1:ny
-    #             z{i}(ceil(siz(k)/10)+1:end,:) = 0;
-    #             z{i} = reshape(z{i},circshift(siz,[0 1-k]));
-    #             z{i} = shiftdim(z{i},1);
-    #         end
-    #     end
-    #     z = cellfun(@(x) idctn(x),z,'UniformOutput',0);
-    # end
 
 
 
 # Create a 2d test array with some missing values
 np.random.seed(1)
-y = np.random.rand(5,5)
+y = np.random.rand(10,20)
 y[0,1] = np.nan
 y[2:4,3] = np.nan
 
