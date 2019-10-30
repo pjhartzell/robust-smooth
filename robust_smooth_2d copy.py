@@ -1,38 +1,5 @@
-'''
-Copyright (c) 2017, Damien Garcia
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
-* Redistributions of source code must retain the above copyright notice, this
-  list of conditions and the following disclaimer.
-
-* Redistributions in binary form must reproduce the above copyright notice,
-  this list of conditions and the following disclaimer in the documentation
-  and/or other materials provided with the distribution
-* Neither the name of CREATIS, Lyon, France nor the names of its
-  contributors may be used to endorse or promote products derived from this
-  software without specific prior written permission.
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
-FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-Refer to Garcia, D., 2010, 'Robust smoothing of gridded data in one and higher 
-dimensions with missing values in Computational Statistics and Data Analysis', 
-Computational Statistics and Data Analysis.
-
-Refer to Garcia, D., 2011, 'A fast all-in-one method for automated post-
-processing of PIV data', Experiments in Fluids.
-'''
 import numpy as np
+import matplotlib.pyplot as plt
 from scipy import ndimage
 from scipy.fftpack import dct, idct
 from scipy.optimize import fminbound
@@ -61,7 +28,9 @@ def robust_smooth_2d(y):
     # Upper and lower bound for the smoothness parameter
     # The average leverage (h) is by definition in [0 1]. Weak smoothing occurs
     # if h is close to 1, while over-smoothing appears when h is near 0. Upper
-    # and lower bounds for h are given to avoid under- or over-smoothing. 
+    # and lower bounds for h are given to avoid under- or over-smoothing. See
+    # equation relating h to the smoothness parameter for m = 2 (Equation #12
+    # in the referenced CSDA paper).
     tensor_rank = sum(size_y!=1) # tensor rank of the y-array
     h_min = 1e-6
     h_max = 0.99
@@ -89,7 +58,7 @@ def robust_smooth_2d(y):
             # the smoothing parameter S. Because this process is time-consuming,
             # it is performed from time to time (when the number of iterations
             # is a power of 2).
-            if not np.log2(num_iterations) % 1:
+            if not np.log2(num_iterations) % 2:
                 p = fminbound(
                     gcv, 
                     np.log10(s_min_bound), 
@@ -117,6 +86,7 @@ def robust_smooth_2d(y):
         num_iterations = 0
         num_robust_iterations += 1
         robust_iterate = num_robust_iterations < 4 # 3 robust iterations are enough
+        print('here')
 
     return z, s
 
@@ -133,7 +103,9 @@ def robust_weights(y, z, is_finite, h):
 
 def gcv(p, lmbda, dct_y, weights_total, is_finite, y, num_finite, num_elements):
     s = 10**p
+    # print("s = {}".format(s))
     Gamma = 1/(1+s*lmbda**2)
+    # print("Gamma[128,128] = {}".format(Gamma[128,128]))
     y_hat = idct(idct(Gamma*dct_y, norm='ortho', type=2, axis=1), norm='ortho', type=2, axis=0)
     rss = np.linalg.norm(np.sqrt(weights_total[is_finite])*(y[is_finite]-y_hat[is_finite]))**2
     trace_H = np.sum(Gamma)
@@ -142,19 +114,73 @@ def gcv(p, lmbda, dct_y, weights_total, is_finite, y, num_finite, num_elements):
 
 
 def initial_guess(y, not_finite):
-    # Nearest neighbor interpolation of missing values. This is actually pretty
-    # CRAPPY for large voids. Artifacts of the voids can be seen quite easily. 
-    # Probably better to use a spline interpolator.
+    # nearest neighbor interpolation of missing values
     if not_finite.any():
         indices = ndimage.distance_transform_edt(not_finite, return_indices=True)[1]
         z = y[indices[0], indices[1]]
     else:
-        z = y
-    # coarse smoothing using one-tenth (more like one-hundredth?) of the DCT coefficients
+        z = y    
+    # plt.imshow(z)
+    # plt.show()
+    # coarse smoothing using one-tenth (?) of DCT coefficients
     z = dct(dct(z, norm='ortho', type=2, axis=0), norm='ortho', type=2, axis=1)
     zero_start = np.ceil(np.array(z.shape)/10).astype(int)
     z[zero_start[0]:,:] = 0
     z[:,zero_start[1]:] = 0
     z = idct(idct(z, norm='ortho', type=2, axis=1), norm='ortho', type=2, axis=0)
+    # plt.imshow(z)
+    # plt.show()
     return z
 
+
+def peaks(grid_size, num_peaks):
+    xp = np.arange(grid_size)
+    [x,y] = np.meshgrid(xp,xp)
+    z = np.zeros_like(x).astype(float)
+    for i in range(num_peaks):
+        x0 = np.random.rand()*grid_size
+        y0 = np.random.rand()*grid_size
+        sdx = np.random.rand()*grid_size/4.
+        sdy = sdx
+        c = np.random.rand()*2 - 1.
+        f = np.exp(-((x-x0)/sdx)**2-((y-y0)/sdy)**2 - (((x-x0)/sdx))*((y-y0)/sdy)*c)
+        f *= np.random.rand()
+        z += f
+    return z 
+
+
+def missing_data(z, hole_topleft, hole_size):
+    num_elements = np.prod(z.shape)
+    for i in range(np.floor(num_elements/2).astype(int)):
+        row_idx = np.floor(np.random.rand()*z.shape[0]).astype(int)
+        col_idx = np.floor(np.random.rand()*z.shape[1]).astype(int)
+        z[row_idx,col_idx] = np.nan
+    z[hole_topleft[0]:hole_topleft[0]+hole_size, hole_topleft[1]:hole_topleft[1]+hole_size] = np.nan
+    return z
+
+def add_noise(z):
+    std = np.std(z)
+    num_elements = np.prod(z.shape)
+    for i in range(np.floor(num_elements/4).astype(int)):
+        row_idx = np.floor(np.random.rand()*z.shape[0]).astype(int)
+        col_idx = np.floor(np.random.rand()*z.shape[1]).astype(int)
+        z[row_idx,col_idx] += ((np.random.rand() - 0.5)*2) * std * 0
+    return z
+
+
+# Create a 2d test array with some noise and missing values
+np.random.seed(1)
+y = peaks(256,50)
+plt.imshow(y)
+plt.show()
+y = add_noise(y)
+plt.imshow(y)
+plt.show()
+y = missing_data(y, [85,150], 50)
+plt.imshow(y)
+plt.show()
+
+z, s = robust_smooth_2d(y)
+print("s = {}".format(s))
+plt.imshow(z)
+plt.show()
