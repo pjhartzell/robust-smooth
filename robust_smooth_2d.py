@@ -1,4 +1,11 @@
 '''
+Adapted from Damian Garcia's MATLAB code:
+- See Garcia, D., 2010, 'Robust smoothing of gridded data in one and higher 
+dimensions with missing values in Computational Statistics and Data Analysis', 
+Computational Statistics and Data Analysis.
+- See Garcia, D., 2011, 'A fast all-in-one method for automated post-
+processing of PIV data', Experiments in Fluids.
+
 Copyright (c) 2017, Damien Garcia
 All rights reserved.
 
@@ -24,13 +31,6 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-Refer to Garcia, D., 2010, 'Robust smoothing of gridded data in one and higher 
-dimensions with missing values in Computational Statistics and Data Analysis', 
-Computational Statistics and Data Analysis.
-
-Refer to Garcia, D., 2011, 'A fast all-in-one method for automated post-
-processing of PIV data', Experiments in Fluids.
 '''
 import numpy as np
 from scipy import ndimage
@@ -38,7 +38,14 @@ from scipy.fftpack import dct, idct
 from scipy.optimize import fminbound
 
 
-def robust_smooth_2d(y):
+def robust_smooth_2d(y, **kwargs):
+    if "s" in kwargs:
+        s = kwargs.get("s")
+    else:
+        auto_s = True
+    if "robust" in kwargs:
+        robust = kwargs.get("robust")
+
     size_y = np.asarray(y.shape)
     num_elements = np.prod(size_y)    
     not_finite = np.isnan(y)
@@ -81,15 +88,15 @@ def robust_smooth_2d(y):
 
     # iterative process
     while robust_iterate:
-        amount_of_weights = np.sum(weights_total) / num_elements
         while tolerance > 1e-5 and num_iterations < 100:
             num_iterations += 1
             dct_y = dct(dct(weights_total*(y - z) + z, norm='ortho', type=2, axis=0), norm='ortho', type=2, axis=1)
+            
             # The generalized cross-validation (GCV) method is used to compute
             # the smoothing parameter S. Because this process is time-consuming,
             # it is performed from time to time (when the number of iterations
             # is a power of 2).
-            if not np.log2(num_iterations) % 1:
+            if auto_s and not np.log2(num_iterations) % 1:
                 p = fminbound(
                     gcv, 
                     np.log10(s_min_bound), 
@@ -97,26 +104,29 @@ def robust_smooth_2d(y):
                     args=(lmbda, dct_y, weights_total, is_finite, y, num_finite, num_elements),
                     xtol=0.1,
                     full_output=False)
-
-            s = 10**p
+                s = 10**p
+            
             Gamma = 1/(1+s*lmbda**2)
             z = relaxation_factor*idct(idct(Gamma*dct_y, norm='ortho', type=2, axis=1), norm='ortho', type=2, axis=0) + (1-relaxation_factor)*z
             tolerance = np.linalg.norm(z0-z)/np.linalg.norm(z)
             z0 = z # re-initialize
 
-        # average levereage
-        h = 1
-        for k in range(tensor_rank):
-            h0 = np.sqrt(1 + 16*s)
-            h0 = np.sqrt(1 + h0) / np.sqrt(2) / h0
-        h = h*h0
-        # take robust weights into account
-        weights_total = weights*robust_weights(y, z, is_finite, h)
-        # re-initialize for another iterative weighted process
-        tolerance = 1
-        num_iterations = 0
-        num_robust_iterations += 1
-        robust_iterate = num_robust_iterations < 4 # 3 robust iterations are enough
+        if robust:
+            # average levereage
+            h = 1
+            for k in range(tensor_rank):
+                h0 = np.sqrt(1 + 16*s)
+                h0 = np.sqrt(1 + h0) / np.sqrt(2) / h0
+            h = h*h0
+            # take robust weights into account
+            weights_total = weights*robust_weights(y, z, is_finite, h)
+            # re-initialize for another iterative weighted process
+            tolerance = 1
+            num_iterations = 0
+            num_robust_iterations += 1
+            robust_iterate = num_robust_iterations < 4 # 3 robust iterations are enough
+        else:
+            robust_iterate = False
 
     return z, s
 
