@@ -1,4 +1,4 @@
-'''
+"""
 Adapted from Damian Garcia's MATLAB code:
 - See Garcia, D., 2010, 'Robust smoothing of gridded data in one and higher 
 dimensions with missing values in Computational Statistics and Data Analysis', 
@@ -31,7 +31,7 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-'''
+"""
 import numpy as np
 from scipy import ndimage
 from scipy.fftpack import dct, idct
@@ -39,8 +39,38 @@ from scipy.optimize import fminbound
 
 
 def robust_smooth_2d(y, **kwargs):
+    """
+    Interpolate missing values and smooth a 2D numpy array with optional robust
+    outlier removal. Missing values in the array (where interpolation is
+    desired) must be assigned numpy.nan values.
+
+    Argument:
+        y (numpy array): The 2D numpy array to be interpolated and smoothed.
+    
+    Optional Keyword Arguments:
+        s (float): Smoothing factor to over-ride the automatically computed
+            smoothing factor.
+        robust (boolean): Apply robust outlier removal. Specify as True 
+            (default) or False.
+    
+    Returns:
+        z (numpy array): Smoothed version of the input array.
+        s (float): Smoothing factor used to generate the output array.
+
+    Examples:
+        1. Allow automatic smoothing factor computation and robust outlier
+           removal:
+                robust_smooth_2d(y)
+        2. Manually over-ride the smoothing factor computation:
+                robust_smooth_2d(y, s=15)
+        3. Over-ride smoothing factor computation and turn off the default
+           robust smoothing:
+                robust_smooth_2d(y, s=15, robust=False)
+    """
+
     if "s" in kwargs:
         s = kwargs.get("s")
+        auto_s = False
     else:
         auto_s = True
     if "robust" in kwargs:
@@ -51,10 +81,6 @@ def robust_smooth_2d(y, **kwargs):
     not_finite = np.isnan(y)
     is_finite = np.logical_not(not_finite)
     num_finite = np.sum(is_finite)
-
-    # Create weight matrix with zeros at missing (NaN) value locations
-    weights = np.ones(size_y)
-    weights[not_finite] = 0
 
     # Create the Lambda tensor, which contains the eingenvalues of the 
     # difference matrix used in the penalized least squares process. We assume 
@@ -76,6 +102,8 @@ def robust_smooth_2d(y, **kwargs):
     s_max_bound = (((1 + np.sqrt(1 + 8*h_min**(2/tensor_rank)))/4/h_min**(2/tensor_rank))**2 - 1) / 16
 
     # initialize stuff before iterating
+    weights = np.ones(size_y)
+    weights[not_finite] = 0
     weights_total = weights
     z = initial_guess(y, not_finite)
     z0 = z
@@ -132,16 +160,19 @@ def robust_smooth_2d(y, **kwargs):
 
 
 def robust_weights(y, z, is_finite, h):
-    # weights for robust smoothing.
+    """Generate bi-square weights for robust smoothing (outlier rejection)."""
     residuals = y - z
     median_abs_deviation = np.median(np.fabs(residuals[is_finite] - np.median(residuals[is_finite])))
     studentized_residuals = np.abs(residuals/(1.4826*median_abs_deviation)/np.sqrt(1-h))
+    # the weighting can be tuned by modifying the 4.685 value (make it smaller
+    # for more aggressive outlier detection)
     bisquare_weights = ((1 - (studentized_residuals/4.685)**2)**2) * ((studentized_residuals/4.685) < 1)
     bisquare_weights[np.isnan(bisquare_weights)] = 0
     return bisquare_weights
 
 
 def gcv(p, lmbda, dct_y, weights_total, is_finite, y, num_finite, num_elements):
+    """Generalized Cross Validation for determining the smoothing factor."""
     s = 10**p
     Gamma = 1/(1+s*lmbda**2)
     y_hat = idct(idct(Gamma*dct_y, norm='ortho', type=2, axis=1), norm='ortho', type=2, axis=0)
@@ -152,9 +183,12 @@ def gcv(p, lmbda, dct_y, weights_total, is_finite, y, num_finite, num_elements):
 
 
 def initial_guess(y, not_finite):
+    """Generate an initial estimate of the smooth surface with missing values
+    interpolated.
+    """
     # Nearest neighbor interpolation of missing values. This is actually pretty
-    # CRAPPY for large voids. Artifacts of the voids can be seen quite easily. 
-    # Probably better to use a spline interpolator.
+    # crappy for large voids. Artifacts of the nearest neighbor interpolation
+    # can be seen quite easily. Might be better to use a spline interpolator.
     if not_finite.any():
         indices = ndimage.distance_transform_edt(not_finite, return_indices=True)[1]
         z = y[indices[0], indices[1]]
