@@ -20,10 +20,10 @@ def peaks(grid_size, num_peaks):
     return z
 
 
-def add_noise(z, factor):
+def add_noise(z, factor, fraction):
     std = np.std(z)
     num_elements = np.prod(z.shape)
-    for i in range(np.floor(num_elements/4).astype(int)):
+    for i in range(np.floor(num_elements/fraction).astype(int)):
         row_idx = np.floor(np.random.rand()*z.shape[0]).astype(int)
         col_idx = np.floor(np.random.rand()*z.shape[1]).astype(int)
         z[row_idx,col_idx] += ((np.random.rand() - 0.5)*2) * std * factor
@@ -51,31 +51,37 @@ y = peaks(256,50)
 plt.imshow(y)
 plt.title('Original')
 plt.show()
-original = y.copy()
+original_clean = y.copy()
 
-y = add_noise(y, 1)
+y = add_noise(y, 1.5, 5)
 plt.imshow(y)
 plt.title('Noisy')
 plt.show()
+original_noisy = y.copy()
 
 y = missing_data(y, 10)
 plt.imshow(y)
 plt.title('Noisy + Missing')
 plt.show()
 
-y = bad_cluster(y, [50,50], 4, -5)
+y = bad_cluster(y, [50,50], 12, np.nan)
 plt.imshow(y)
 plt.title('Noisy + Missing + Bad Cluster')
 plt.show()
+original_dirty = y.copy()
 
 z, s = robust_smooth_2d(y, robust=True)
 print("s = {}".format(s))
 
-f, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=[15,5])
-ax1.imshow(original)
+f, (ax1, ax2) = plt.subplots(1, 2, figsize=[10,5])
+ax1.imshow(original_clean)
 ax1.set_title('Clean')
-ax2.imshow(y)
-ax2.set_title('Dirty')
-ax3.imshow(z)
-ax3.set_title('Recovered')
+ax2.imshow(original_noisy)
+ax2.set_title('Noisy/Outliers')
+plt.show()
+f, (ax1, ax2) = plt.subplots(1, 2, figsize=[10,5])
+ax1.imshow(original_dirty)
+ax1.set_title('Noisy + Missing Data')
+ax2.imshow(z)
+ax2.set_title('Robust Smooth')
 plt.show()
