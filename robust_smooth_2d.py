@@ -186,15 +186,14 @@ def initial_guess(y, not_finite):
     """Generate an initial estimate of the smooth surface with missing values
     interpolated.
     """
-    # Nearest neighbor interpolation of missing values. This is actually pretty
-    # crappy for large voids. Artifacts of the nearest neighbor interpolation
-    # can be seen quite easily. Might be better to use a spline interpolator.
+    # Nearest neighbor interpolation of missing values. This can leave visible 
+    # artifacts resulting from the nearest neighbor interpolation that is used.
     if not_finite.any():
         indices = ndimage.distance_transform_edt(not_finite, return_indices=True)[1]
         z = y[indices[0], indices[1]]
     else:
         z = y
-    # coarse smoothing using one-tenth (more like one-hundredth?) of the DCT coefficients
+    # coarse smoothing using a fraction of the DCT coefficients
     z = dct(dct(z, norm='ortho', type=2, axis=0), norm='ortho', type=2, axis=1)
     zero_start = np.ceil(np.array(z.shape)/10).astype(int)
     z[zero_start[0]:,:] = 0
