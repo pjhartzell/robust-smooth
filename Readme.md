@@ -1,5 +1,5 @@
 # robust_smooth_2d
-A simplified Python translation of Damien Garcia's MATLAB code for interpolating and smoothing data with robust outlier detection. Garcia's code works for 1D, 2D, and 3D data and can also handle multiple components (e.g., vector components at each location in a 2D field). This stripped down Python translation only handles single component 2D data, e.g., grayscale images. 
+A simplified Python translation of Damien Garcia's [MATLAB code](https://www.mathworks.com/matlabcentral/fileexchange/25634-smoothn) for interpolating and smoothing data with robust outlier detection. Garcia's code works for 1D, 2D, and 3D data and can also handle multiple components (e.g., vector components at each location in a 2D field). This stripped down Python translation only handles single component 2D data, e.g., grayscale images. 
 
 A few keyword arguments are provided for testing: 
 1. You can manually specify a smoothing factor, e.g., _s=15_, which will over-ride the built-in automated computation.
