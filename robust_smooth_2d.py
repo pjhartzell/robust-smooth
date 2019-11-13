@@ -73,8 +73,11 @@ def robust_smooth_2d(y, **kwargs):
         auto_s = False
     else:
         auto_s = True
+
     if "robust" in kwargs:
         robust = kwargs.get("robust")
+    else:
+        robust = True
 
     size_y = np.asarray(y.shape)
     num_elements = np.prod(size_y)    
